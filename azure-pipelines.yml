@@ -64,7 +64,7 @@ jobs:
         displayName: 'Compile sources'
         inputs:
           command: custom
-          verbose: false
+          verbose: true
           customCommand: 'run compile'
       # - script: |
       #     set -e
