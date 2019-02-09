@@ -3,6 +3,9 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as minimatchtype from 'minimatch';
+import { getNodeModule } from './nodeModules';
+import { readFile } from 'fs';
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -16,8 +19,9 @@ import {
   HighlighterNode
 } from './twitchHighlighterTreeView';
 
-let highlightDecorationType: vscode.TextEditorDecorationType;
 const twitchHighlighterStatusBarIcon: string = '$(plug)'; // The octicon to use for the status bar icon (https://octicons.github.com/)
+const minimatch = getNodeModule<typeof minimatchtype>('minimatch');
+let highlightDecorationType: vscode.TextEditorDecorationType;
 let highlighters: Array<Highlighter> = new Array<Highlighter>();
 let client: LanguageClient;
 let twitchHighlighterTreeView: TwitchHighlighterDataProvider;
@@ -420,7 +424,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  function executeHighlight(
+  async function executeHighlight(
     lineNumber: string | undefined,
     twitchUser: string = 'self'
   ) {
@@ -432,6 +436,11 @@ export function activate(context: vscode.ExtensionContext) {
     let editor = vscode.window.activeTextEditor;
     if (editor) {
       let doc = editor.document;
+
+      if (await excludeTextDocument(doc.uri)) {
+        return;
+      }
+
       let existingHighlighter = highlighters.find(highlighter => {
         return highlighter.editor.document.fileName === doc.fileName;
       });
@@ -622,5 +631,46 @@ function setupDecoratorType() {
   highlightDecorationType = vscode.window.createTextEditorDecorationType({
     backgroundColor: configuration.get<string>('highlightColor') || 'green',
     border: configuration.get<string>('highlightBorder') || '2px solid white'
+  });
+}
+
+/**
+ * Determines if a TextDocument should be excluded based on the .twitchignore file.
+ * @param uri The TextDocument URI to match to .twitchignore
+ */
+function excludeTextDocument(uri: vscode.Uri): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!minimatch || !workspaceFolder) { 
+      resolve(false);
+    } else {
+      const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath).replace(/\\/g,'/');
+      readFile(path.join(workspaceFolder.uri.fsPath, '.gitignore'), 'utf8', (err, data) => {
+        if (err) {
+          resolve(false);
+        } else {
+          const lines = data
+            .replace(/\r/gm, '')
+            .split(/\n/)
+            .filter(line => !line.startsWith('#') && line.length > 0);
+          console.log(`realtivePath: ${relativePath}`);
+          const exclude = lines.filter(line => !line.startsWith('!'))
+            .some(line => {
+              const pattern = line.substr(-1) === '/' ? `**/${line}**` : line;
+              const match = minimatch(relativePath, pattern, { matchBase: true });
+              if (match) { console.log(`matched: '${relativePath}' | '${pattern}'`, match); }
+              return line.startsWith('!') ? !match : match;
+            });
+          const ignoreExclude = lines.filter(line => line.startsWith('!'))
+            .some(line => {
+              const pattern = line.substr(-1) === '/' ? `**/${line.substr(1)}/**` : line.substr(1);
+              const match = minimatch(relativePath, pattern, { matchBase: true });
+              if (match) { console.log(`matched: '${relativePath}' | '${pattern}'`, match); }
+              return match;
+            });
+          resolve(ignoreExclude ? !exclude : exclude);
+        }
+      });
+    }
   });
 }
