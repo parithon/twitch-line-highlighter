@@ -1,3 +1,9 @@
+trigger:
+  - master
+  - releases/*
+pr:
+  - master
+  - releases/*
 jobs:
   - job: Windows
     pool:
