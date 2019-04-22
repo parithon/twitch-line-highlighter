@@ -237,7 +237,7 @@
     "typescript": "^2.6.1",
     "vscode": "^1.1.33",
     "webpack": "^4.29.4",
-    "webpack-cli": "^3.2.3"
+    "webpack-cli": "^3.3.1"
   },
   "dependencies": {
     "tmi.js": "^1.4.2",
